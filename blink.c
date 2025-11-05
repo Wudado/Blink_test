@@ -99,6 +99,24 @@ void uci_read_delay()
     return;
 }
 
+void free_event(struct gpiod_chip *chip,
+                struct gpiod_line_settings *settings, struct gpiod_line_config *line_cfg,
+                struct gpiod_request_config *req_cfg) //This block clean up gpio and ubus.
+{
+    if(ctx)
+    {
+        ubus_free(ctx);
+        ctx = NULL;
+    }
+    if (global_request) gpiod_line_request_release(global_request);
+    if (chip) gpiod_chip_close(chip);
+    if (settings) gpiod_line_settings_free(settings);
+    if (line_cfg) gpiod_line_config_free(line_cfg);
+    if (req_cfg) gpiod_request_config_free(req_cfg);
+    uloop_done();
+    return;
+}
+
 int main(void)
 {
     uci_read_delay();
@@ -129,7 +147,7 @@ int main(void)
     global_request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
     if (!global_request) {
         perror("gpiod_chip_request_lines");
-        gpiod_chip_close(chip);
+        free_event(chip, settings, line_cfg, req_cfg);
         return EXIT_FAILURE;
     }
     
@@ -139,7 +157,7 @@ int main(void)
     ctx = ubus_connect(NULL);
     if (!ctx) {
         fprintf(stderr, "Failed to connect to ubus\n");
-        goto cleanup_gpio;
+        free_event(chip, settings, line_cfg, req_cfg);
     }
     ubus_add_uloop(ctx);
 
@@ -154,7 +172,7 @@ int main(void)
     ret = ubus_add_object(ctx, &my_program_object);
     if (ret) {
         fprintf(stderr, "Failed to add ubus object: %s\n", ubus_strerror(ret));
-        goto cleanup_ubus;
+        free_event(chip, settings, line_cfg, req_cfg);
     }
     printf("UBus object 'blink.control' registered.\n");
 
@@ -165,15 +183,7 @@ int main(void)
     printf("Starting uloop...\n");
     uloop_run(); // This blocks and handles both ubus and timer events
 
-cleanup_ubus:
-    ubus_free(ctx);
-cleanup_gpio:
-    if (global_request) gpiod_line_request_release(global_request);
-    if (chip) gpiod_chip_close(chip);
-    if (settings) gpiod_line_settings_free(settings);
-    if (line_cfg) gpiod_line_config_free(line_cfg);
-    if (req_cfg) gpiod_request_config_free(req_cfg);
-    uloop_done();
+    free_event(chip, settings, line_cfg, req_cfg);
 
     return EXIT_SUCCESS;
 }
