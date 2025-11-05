@@ -8,17 +8,24 @@
 #include <libubox/blobmsg.h>
 #include <libubox/blobmsg_json.h>
 #include <libubox/uloop.h>
-#include <signal.h> // For signal handling
+#include <signal.h>
 
 #define GPIOCHIP_PATH "/dev/gpiochip0"
 #define GPIO_LINE_NUM 26
 
-int blink_delay_us = 500000; // Default to 500ms (500,000 us)
+int blink_delay_us = 500000; 
 
+//ubus
 static struct ubus_context *ctx;
 static struct ubus_object my_program_object;
 static struct ubus_object_type my_program_object_type;
 static struct blob_buf b;
+
+//gpio
+static struct uloop_timeout blink_timer;
+struct gpiod_line_request *global_request = NULL;
+unsigned int global_offset = GPIO_LINE_NUM;
+int global_value = 0;
 
 enum {                              //ubas callback
     DELAY_VALUE,
@@ -60,10 +67,6 @@ static const struct ubus_method my_program_methods[] = {
 };
 
 
-static struct uloop_timeout blink_timer;
-struct gpiod_line_request *global_request = NULL;
-unsigned int global_offset = GPIO_LINE_NUM;
-int global_value = 0;
 
 static void blink_timeout_cb(struct uloop_timeout *t)
 {
@@ -75,21 +78,13 @@ static void blink_timeout_cb(struct uloop_timeout *t)
     uloop_timeout_set(&blink_timer, blink_delay_us / 1000);  
 }
 
-int main(void)
+void uci_read_delay() 
 {
- 
-
-    struct gpiod_chip *chip = NULL;
-    struct gpiod_line_settings *settings = NULL;
-    struct gpiod_line_config *line_cfg = NULL;
-    struct gpiod_request_config *req_cfg = NULL;
-    int ret;
-    
     struct uci_context *uci_ctx;
     struct uci_ptr ptr;
     char uci_path[] = "blink.globals.interval";
     bool extended_syntax = false; 
-
+    
     uci_ctx = uci_alloc_context();
     if (uci_ctx && uci_load(uci_ctx, "blink", NULL) == UCI_OK &&
         uci_lookup_ptr(uci_ctx, &ptr, uci_path, extended_syntax) == UCI_OK &&
@@ -100,10 +95,20 @@ int main(void)
     } else {
          printf("Using default delay of %d us (UCI lookup failed or not found).\n", blink_delay_us);
     }
-
     uci_free_context(uci_ctx);
+    return;
+}
 
-    printf("Blinking LED on GPIO %u using libgpiod v2.x...\n", global_offset);
+int main(void)
+{
+    uci_read_delay();
+
+    struct gpiod_chip *chip = NULL;
+    struct gpiod_line_settings *settings = NULL;
+    struct gpiod_line_config *line_cfg = NULL;
+    struct gpiod_request_config *req_cfg = NULL;
+    int ret;
+    
 
     chip = gpiod_chip_open(GPIOCHIP_PATH);
     if (!chip) {
