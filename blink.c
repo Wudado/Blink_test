@@ -13,7 +13,7 @@
 #define GPIOCHIP_PATH "/dev/gpiochip0"
 #define GPIO_LINE_NUM 26
 
-int blink_delay_us = 500000; 
+int blink_delay_ms = 5000; 
 
 //ubus
 static struct ubus_context *ctx;
@@ -33,7 +33,7 @@ enum {                              //ubas callback
 };
 
 static const struct blobmsg_policy delay_policy[] = {
-    [DELAY_VALUE] = { .name = "delay_us", .type = BLOBMSG_TYPE_INT32 },
+    [DELAY_VALUE] = { .name = "delay_ms", .type = BLOBMSG_TYPE_INT32 },
 };
 
 static int set_delay_handler(struct ubus_context *ctx, struct ubus_object *obj,
@@ -46,11 +46,11 @@ static int set_delay_handler(struct ubus_context *ctx, struct ubus_object *obj,
     if (tb[DELAY_VALUE]) {
         int new_delay = blobmsg_get_u32(tb[DELAY_VALUE]);
         if (new_delay >= 0) {
-            blink_delay_us = new_delay; // Update the global variable
-            printf("UBus: Blink delay updated to %d us\n", blink_delay_us);
+            blink_delay_ms = new_delay; // Update the global variable
+            printf("UBus: Blink delay updated to %d us\n", blink_delay_ms);
             blob_buf_init(&b, 0);
             blobmsg_add_string(&b, "status", "success");
-            blobmsg_add_u32(&b, "new_delay_us", blink_delay_us);
+            blobmsg_add_u32(&b, "new_delay_ms", blink_delay_ms);
             ubus_send_reply(ctx, req, b.head);
         } else {
             return UBUS_STATUS_INVALID_ARGUMENT;
@@ -75,7 +75,7 @@ static void blink_timeout_cb(struct uloop_timeout *t)
         gpiod_line_request_set_value(global_request, global_offset, global_value);
     }
     
-    uloop_timeout_set(&blink_timer, blink_delay_us / 1000);  
+    uloop_timeout_set(&blink_timer, blink_delay_ms);  
 }
 
 void uci_read_delay() 
@@ -90,10 +90,10 @@ void uci_read_delay()
         uci_lookup_ptr(uci_ctx, &ptr, uci_path, extended_syntax) == UCI_OK &&
         ptr.last && ptr.last->type == UCI_TYPE_OPTION && 
         uci_to_option(ptr.last)->type == UCI_TYPE_STRING) {
-            blink_delay_us = atoi(uci_to_option(ptr.last)->v.string);
-            printf("Initial delay from UCI: %d us\n", blink_delay_us);
+            blink_delay_ms = atoi(uci_to_option(ptr.last)->v.string);
+            printf("Initial delay from UCI: %d us\n", blink_delay_ms);
     } else {
-         printf("Using default delay of %d us (UCI lookup failed or not found).\n", blink_delay_us);
+         printf("Using default delay of %d us (UCI lookup failed or not found).\n", blink_delay_ms);
     }
     uci_free_context(uci_ctx);
     return;
@@ -178,7 +178,7 @@ int main(void)
 
     //blink
     blink_timer.cb = blink_timeout_cb;
-    uloop_timeout_set(&blink_timer, blink_delay_us / 1000); // Set initial delay
+    uloop_timeout_set(&blink_timer, blink_delay_ms / 1000); // Set initial delay
 
     printf("Starting uloop...\n");
     uloop_run(); // This blocks and handles both ubus and timer events
